@@ -1,8 +1,26 @@
 import express from "express";
-import sessions from "express-session";
+import session from "express-session";
 import bodyParser from "body-parser";
 import cors from "cors";
+import RedisStore from "connect-redis";
+import redis from "redis";
 const app = express();
+
+const redisClient = redis.createClient();
+
+redisClient.on("error", (err) => {
+  console.error("Redis Client Error", err);
+});
+
+redisClient.on("end", () => {
+  console.log("Redis connection closed");
+});
+
+redisClient.on("connect", () => {
+  console.log("Redis connected");
+});
+redisClient.connect().catch(console.error);
+
 app.use(
   cors({
     origin: "http://localhost:5173",
@@ -11,7 +29,8 @@ app.use(
 );
 app.use(bodyParser.json());
 app.use(
-  sessions({
+  session({
+    store: new RedisStore({ client: redisClient }),
     secret: "somesecret",
     cookie: {
       maxAge: 1000 * 60 * 60 * 24,
@@ -34,10 +53,16 @@ app.get("/", (req, res) => {
   }
 });
 
-app.post("/login", (req, res) => {
+app.post("/login", async (req, res) => {
   const { username, password } = req.body;
   if (username === "admin" || password === "admin") {
     req.session.userid = username;
+    const sessionId = req.session.id;
+    try {
+      console.log(`Session ID: ${sessionId}`);
+    } catch (err) {
+      console.error("Error fetching session from Redis:", err);
+    }
     res.json({ userid: req.session.userid });
   } else {
     return res.status(401).send("Invalid username or password");
